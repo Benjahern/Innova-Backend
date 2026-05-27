@@ -168,9 +168,13 @@ func (s *AdminService) DeleteCompany(companyID string) error {
 func (s *AdminService) GetCompanyConfig(companyName string) (*models.Company, *models.CompanyConfig, error) {
 	company, err := s.companyRepo.GetByName(companyName)
 	if err != nil {
-		// Log the actual error for debugging
-		fmt.Printf("GetCompanyConfig: looking for '%s', error: %v\n", companyName, err)
-		return nil, nil, err
+		// Try by ID as fallback
+		company, err = s.companyRepo.GetByID(companyName)
+		if err != nil {
+			// Log the actual error for debugging
+			fmt.Printf("GetCompanyConfig: looking for '%s', error: %v\n", companyName, err)
+			return nil, nil, err
+		}
 	}
 
 	var config models.CompanyConfig
