@@ -8,10 +8,11 @@ import (
 )
 
 type DashboardService struct {
-	attendanceRepo   repository.AttendanceLogRepository
-	weeklyHoursRepo  repository.WeeklyHoursRepository
+	attendanceRepo     repository.AttendanceLogRepository
+	weeklyHoursRepo    repository.WeeklyHoursRepository
 	monthlyArrearsRepo repository.MonthlyArrearsRepository
-	userRepo         repository.UserRepository
+	userRepo           repository.UserRepository
+	companyRepo        repository.CompanyRepository
 }
 
 func NewDashboardService(
@@ -19,30 +20,36 @@ func NewDashboardService(
 	weeklyHoursRepo repository.WeeklyHoursRepository,
 	monthlyArrearsRepo repository.MonthlyArrearsRepository,
 	userRepo repository.UserRepository,
+	companyRepo repository.CompanyRepository,
 ) *DashboardService {
 	return &DashboardService{
-		attendanceRepo:    attendanceRepo,
-		weeklyHoursRepo:   weeklyHoursRepo,
+		attendanceRepo:     attendanceRepo,
+		weeklyHoursRepo:    weeklyHoursRepo,
 		monthlyArrearsRepo: monthlyArrearsRepo,
-		userRepo:          userRepo,
+		userRepo:           userRepo,
+		companyRepo:        companyRepo,
 	}
 }
 
 type DashboardSummary struct {
-	TotalWorkers    int             `json:"total_workers"`
-	WorkersPresent int             `json:"workers_present"`
-	TotalHoursWeek float64         `json:"total_hours_week"`
-	TotalArrearsMin int             `json:"total_arrears_minutes"`
-	ByWorker        []WorkerSummary `json:"by_worker"`
+	TotalWorkers     int             `json:"total_workers"`
+	WorkersPresent   int             `json:"workers_present"`
+	TotalHoursWeek   float64         `json:"total_hours_week"`
+	TotalArrearsMin  int             `json:"total_arrears_minutes"`
+	WorkersOverLimit int             `json:"workers_over_limit"`
+	LegalLimitHours  float64         `json:"legal_limit_hours"`
+	ByWorker         []WorkerSummary `json:"by_worker"`
 }
 
 type WorkerSummary struct {
-	UserID      string    `json:"user_id"`
-	Name        string    `json:"name"`
-	HoursWeek   float64   `json:"hours_week"`
-	ArrearsMin  int       `json:"arrears_minutes"`
-	Checkins    int       `json:"checkins"`
-	LastCheckin *time.Time `json:"last_checkin,omitempty"`
+	UserID             string     `json:"user_id"`
+	Name               string     `json:"name"`
+	HoursWeek          float64    `json:"hours_week"`
+	ArrearsMin         int        `json:"arrears_minutes"`
+	Checkins           int        `json:"checkins"`
+	LastCheckin        *time.Time `json:"last_checkin,omitempty"`
+	ExceedsLegalLimit  bool       `json:"exceeds_legal_limit"`
+	LegalLimitHours    float64    `json:"legal_limit_hours"`
 }
 
 // GetDashboard returns dashboard summary for a company
@@ -51,6 +58,14 @@ func (s *DashboardService) GetDashboard(companyID string) (*DashboardSummary, er
 	workers, err := s.userRepo.GetByCompany(companyID)
 	if err != nil {
 		return nil, fmt.Errorf("get workers: %w", err)
+	}
+
+	// Get company config to read the legal weekly hours limit
+	legalLimitHours := 40.0 // Default to Ley 40 Horas
+	if company, err := s.companyRepo.GetByID(companyID); err == nil {
+		if company.WorkHoursPerWeek > 0 {
+			legalLimitHours = company.WorkHoursPerWeek
+		}
 	}
 
 	now := time.Now()
@@ -64,14 +79,16 @@ func (s *DashboardService) GetDashboard(companyID string) (*DashboardSummary, er
 	weekStart := now.AddDate(0, 0, -weekday+1)
 
 	summary := &DashboardSummary{
-		TotalWorkers: len(workers),
-		ByWorker:     make([]WorkerSummary, 0, len(workers)),
+		TotalWorkers:    len(workers),
+		LegalLimitHours: legalLimitHours,
+		ByWorker:        make([]WorkerSummary, 0, len(workers)),
 	}
 
 	for _, worker := range workers {
 		ws := WorkerSummary{
-			UserID: worker.UserID,
-			Name:   worker.Name,
+			UserID:          worker.UserID,
+			Name:            worker.Name,
+			LegalLimitHours: legalLimitHours,
 		}
 
 		// Get today's attendance to count present workers
@@ -94,6 +111,12 @@ func (s *DashboardService) GetDashboard(companyID string) (*DashboardSummary, er
 		if err == nil && weekHours != nil {
 			ws.HoursWeek = weekHours.TotalHours
 			summary.TotalHoursWeek += weekHours.TotalHours
+		}
+
+		// Validate Ley 40 Horas: flag workers that exceed the legal weekly limit
+		if ws.HoursWeek > legalLimitHours {
+			ws.ExceedsLegalLimit = true
+			summary.WorkersOverLimit++
 		}
 
 		// Get pre-calculated monthly arrears (DB auto-updates via trigger)

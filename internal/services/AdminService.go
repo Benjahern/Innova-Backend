@@ -147,7 +147,15 @@ func (s *AdminService) UpdateCompany(companyID string, req *models.CreateCompany
 	configStr := string(configJSON)
 	company.Config = &configStr
 	company.DefaultStartTime = req.DefaultStartTime
+	if req.DefaultStartTime == "" {
+		company.DefaultStartTime = "08:00" // Default fallback
+	}
+	
 	company.DefaultEndTime = req.DefaultEndTime
+	if company.DefaultEndTime != nil && *company.DefaultEndTime == "" {
+		company.DefaultEndTime = nil
+	}
+
 	company.WorkHoursPerWeek = req.WorkHoursPerWeek
 	if company.WorkHoursPerWeek == 0 {
 		company.WorkHoursPerWeek = 42.0

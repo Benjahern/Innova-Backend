@@ -76,7 +76,7 @@ func main() {
 	patternService := services.NewPatternService(patternRepo, shiftRepo, userShiftRepo)
 	attendanceService := services.NewAttendanceService(attendanceRepo, companyRepo, userRepo, patternService)
 	userService := services.NewUserService(userRepo, shiftRepo, userShiftRepo)
-	dashboardService := services.NewDashboardService(attendanceRepo, weeklyHoursRepo, monthlyArrearsRepo, userRepo)
+	dashboardService := services.NewDashboardService(attendanceRepo, weeklyHoursRepo, monthlyArrearsRepo, userRepo, companyRepo)
 	adminService := services.NewAdminService(companyRepo, userRepo, branchRepo, adminUserRepo)
 
 	// Initialize handlers
